@@ -28,21 +28,23 @@ export default class WorkerPlugin {
 
   apply (compiler) {
     compiler.hooks.normalModuleFactory.tap(NAME, factory => {
-      for (const type of JS_TYPES) {
-        factory.hooks.parser.for(`javascript/${type}`).tap(NAME, parser => {
+      for (const jsType of JS_TYPES) {
+        factory.hooks.parser.for(`javascript/${jsType}`).tap(NAME, parser => {
           let workerId = 0;
 
           parser.hooks.new.for('Worker').tap(NAME, expr => {
-            const dep = parser.evaluateExpression(expr.arguments[0]);
+            const [depExpr, optsExpr] = expr.arguments;
+            const dep = parser.evaluateExpression(depExpr);
 
-            if (!dep.isString()) {
+            if (!dep.isString() || !dep.isIdentifier()) {
               parser.state.module.warnings.push({
                 message: 'new Worker() will only be bundled if passed a String.'
               });
               return false;
             }
 
-            const optsExpr = expr.arguments[1];
+            let depValue = dep.isIdentifier() ? dep.value : dep.string;
+
             let typeModuleExpr;
             let opts;
             if (optsExpr) {
@@ -61,15 +63,15 @@ export default class WorkerPlugin {
 
             if (!opts || opts.type !== 'module') {
               parser.state.module.warnings.push({
-                message: `new Worker() will only be bundled if passed options that include { type: 'module' }.${opts ? `\n  Received: new Worker(${JSON.stringify(dep.string)}, ${JSON.stringify(opts)})` : ''}`
+                message: `new Worker() will only be bundled if passed options that include { type: 'module' }.${opts ? `\n  Received: new Worker(${JSON.stringify(depValue)}, ${JSON.stringify(opts)})` : ''}`
               });
               return false;
             }
 
             let loaderOptions = opts.name && { name: opts.name };
-            const req = `require(${JSON.stringify(workerLoader + (loaderOptions ? ('?' + JSON.stringify(loaderOptions)) : '') + '!' + dep.string)})`;
+            const req = `require(${JSON.stringify(workerLoader + (loaderOptions ? ('?' + JSON.stringify(loaderOptions)) : '') + '!' + depValue)})`;
             const id = `__webpack__worker__${++workerId}`;
-            ParserHelpers.toConstantDependency(parser, id)(expr.arguments[0]);
+            ParserHelpers.toConstantDependency(parser, id)(depExpr);
 
             if (this.options.workerType) {
               ParserHelpers.toConstantDependency(parser, JSON.stringify(this.options.workerType))(typeModuleExpr.value);

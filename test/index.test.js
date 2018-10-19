@@ -71,6 +71,53 @@ describe('worker-plugin', () => {
     expect(workerInit).toMatch(/new\s+Worker\s*\(\s*__webpack__worker__\d\s*(,\s*\{[\s\n]*type\s*:\s*"classic"[\s\n]*\}\s*)?\)/g);
   });
 
+  test('it replaces parameterized Worker constructor with require(worker-loader)', async () => {
+    const stats = await runWebpack('parameterized', {
+      plugins: [
+        new WorkerPlugin()
+      ]
+    });
+
+    const assetNames = Object.keys(stats.assets);
+    console.log("assetNames", assetNames);
+    expect(assetNames).toHaveLength(2);
+    expect(assetNames).toContainEqual('0.worker.js');
+
+    const main = stats.assets['main.js'];
+    expect(main).toMatch(/[^\n]*new\s+Worker\s*\([^)]*\)[^\n]*/g);
+
+    const workerInit = main.match(/[^\n]*new\s+Worker\s*\([^)]*\)[^\n]*/g)[0];
+    expect(workerInit).toMatch(/new\s+Worker\s*\(\s*__webpack__worker__\d\s*(,\s*\{\}\s*)?\)/g);
+
+    expect(main).toMatch(/module.exports = __webpack_require__\.p\s*\+\s*"0\.worker\.js"/g);
+  });
+
+  test('retainModule:true leaves {type:module} in parameterized worker init', async () => {
+    const { assets } = await runWebpack('parameterized', {
+      plugins: [
+        new WorkerPlugin({
+          preserveTypeModule: true
+        })
+      ]
+    });
+
+    const workerInit = assets['main.js'].match(/[^\n]*new\s+Worker\s*\([^)]*\)[^\n]*/g)[0];
+    expect(workerInit).toMatch(/new\s+Worker\s*\(\s*__webpack__worker__\d\s*(,\s*\{[\s\n]*type\s*:\s*"module"[\s\n]*\}\s*)?\)/g);
+  });
+
+  test('workerType:x modifies the resulting {type} in parameterized worker init', async () => {
+    const { assets } = await runWebpack('parameterized', {
+      plugins: [
+        new WorkerPlugin({
+          workerType: 'classic'
+        })
+      ]
+    });
+
+    const workerInit = assets['main.js'].match(/[^\n]*new\s+Worker\s*\([^)]*\)[^\n]*/g)[0];
+    expect(workerInit).toMatch(/new\s+Worker\s*\(\s*__webpack__worker__\d\s*(,\s*\{[\s\n]*type\s*:\s*"classic"[\s\n]*\}\s*)?\)/g);
+  });
+
   test('it uses the Worker constructor\'s name option and chunkFilename to generate asset filenames', async () => {
     const stats = await runWebpack('named', {
       output: {
